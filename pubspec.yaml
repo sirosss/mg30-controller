@@ -1,0 +1,32 @@
+name: mg30controller
+description: NUX MG-30 Live Controller
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  csv: ^5.1.1
+  flutter:
+    sdk: flutter
+  flutter_midi_command: ^0.4.11
+  go_router: ^10.1.2
+  loader_overlay: ^2.3.2
+  package_info_plus: ^4.2.0
+  provider: ^6.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+  - assets/
+  fonts:
+  - family: BalooBhaijaan2
+    fonts:
+        - asset: fonts/BalooBhaijaan2-Bold.ttf
+          weight: 700
