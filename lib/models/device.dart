@@ -232,6 +232,10 @@ class DeviceModel extends ChangeNotifier {
           // Tempo changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
+            (_toHex(data) == 'F0 43 58 70 7E 02 13 00 00 00 00 00 00 00 F7')) {
+          // Control assignment changed
+          _sendGetCurrentEffectStateCommand(midi);
+        } else if ((data.length == 15) &&
             (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 0B')) {
           // Preset saved
           _programNo = data[8];
@@ -291,7 +295,12 @@ class DeviceModel extends ChangeNotifier {
     for (int i = 0; i < effectTypeChain.length; i++) {
       switch (effectTypeChain[i]) {
         case 0:
-          _addEffectBlock(_getSingleCodeTypeBlock(data, 'WAH', 8, 2, 1));
+          EffectBlock effectBlock =
+              _getSingleCodeTypeBlock(data, 'WAH', 8, 2, 1);
+          if (data[194] != 2) {
+            effectBlock.isEnabled = false;
+          }
+          _addEffectBlock(effectBlock);
           break;
         case 1:
           _addEffectBlock(_getDualCodeTypeBlock(data, 'CMP', 9, 4, 1));
@@ -611,29 +620,29 @@ class DeviceModel extends ChangeNotifier {
   void _loadDummyEffectChain() {
     _effectChain.clear();
     _effectChain.add(EffectBlock(_effectCategories['WAH']!.saveOnEffects[8]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['CMP']!.saveOnEffects[6]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['EFX']!.saveOnEffects[16]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['AMP']!.saveOnEffects[13]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['EQ']!.saveOnEffects[6]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['GATE']!.saveOnEffects[1]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['MOD']!.saveOnEffects[26]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['DLY']!.saveOnEffects[4]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['RVB']!.saveOnEffects[8]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(
         _effectCategories['IR']!.saveOnEffects[7]!, [true, true, true], false));
     _effectChain.add(EffectBlock(_effectCategories['S/R']!.saveOffEffects[1]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['VOL']!.saveOnEffects[1]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
   }
 
   String _toHex(Uint8List data, {String separator = ' '}) {
@@ -667,9 +676,11 @@ class EffectDefinition {
 class EffectBlock {
   final EffectDefinition definition;
   List<bool> isOn;
-  final bool isParallel;
+  bool isEnabled;
+  bool isParallel;
 
-  EffectBlock(this.definition, this.isOn, [this.isParallel = false]);
+  EffectBlock(this.definition, this.isOn,
+      [this.isEnabled = true, this.isParallel = false]);
 }
 
 enum MG30VerificationState { init, verified, unknown }
