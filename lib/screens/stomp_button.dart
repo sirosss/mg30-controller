@@ -50,7 +50,7 @@ class StompButton extends StatelessWidget {
                     child: Text(
                       effectBlock.isEnabled
                           ? effectBlock.definition.name
-                          : 'WAH',
+                          : effectBlock.definition.category.id,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge!.copyWith(
                             color: textColor,
