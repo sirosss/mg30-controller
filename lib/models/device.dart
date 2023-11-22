@@ -228,7 +228,7 @@ class DeviceModel extends ChangeNotifier {
           // Effect order changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
-            (_toHex(data) == 'F0 43 58 70 7E 02 03 00 01 00 00 00 00 00 F7')) {
+            (_toHex(data) == 'F0 43 58 70 7E 02 03 00 00 00 00 00 00 00 F7')) {
           // Tempo changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
@@ -337,6 +337,22 @@ class DeviceModel extends ChangeNotifier {
           break;
         default:
           throw Exception('Unknown effect type code: $effectTypeChain[i]');
+      }
+    }
+
+    List<EffectBlock> modDlyRvb = _effectChain
+        .where((effectBlock) =>
+            ['MOD', 'DLY', 'RVB'].contains(effectBlock.definition.category.id))
+        .toList();
+
+    if (modDlyRvb.length == 3) {
+      if (data[146] & 2 == 2) {
+        modDlyRvb[0].isParallel = true;
+        modDlyRvb[1].isParallel = true;
+      }
+      if (data[146] & 4 == 4) {
+        modDlyRvb[1].isParallel = true;
+        modDlyRvb[2].isParallel = true;
       }
     }
   }
