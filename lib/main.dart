@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:loader_overlay/loader_overlay.dart';
+import 'package:mg30controller/screens/test_page.dart';
 
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -95,6 +96,10 @@ class MainApp extends StatelessWidget {
                     return Colors.white;
                   }),
                 )),
+                toggleButtonsTheme: const ToggleButtonsThemeData(
+                    fillColor: _primaryColor,
+                    selectedColor: Colors.white,
+                    color: Colors.grey),
                 fontFamily: 'BalooBhaijaan2'),
             routerConfig: router(),
           )),
