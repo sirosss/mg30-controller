@@ -54,10 +54,11 @@ class StompButton extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge!.copyWith(
                             color: textColor,
+                            height: 0.9,
                             decoration: effectBlock.isParallel
                                 ? TextDecoration.underline
                                 : TextDecoration.none,
-                            decorationStyle: TextDecorationStyle.double,
+                            decorationStyle: TextDecorationStyle.solid,
                             decorationThickness: 2,
                             decorationColor: textColor,
                           ),
