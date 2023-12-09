@@ -22,4 +22,12 @@ class Utils {
 
     return numPart + charPart;
   }
+
+  static int bpmToMs(int tempo) {
+    return ((60 / tempo) * 1000).floor();
+  }
+
+  static int msToBpm(int tempo) {
+    return ((60 / tempo) * 1000).round();
+  }
 }

@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 
+import '/utils.dart';
+
 class DeviceModel extends ChangeNotifier {
   bool isInitialized = false;
 
@@ -29,6 +31,7 @@ class DeviceModel extends ChangeNotifier {
   int _tempo = 40;
   DateTime _lastTapTempo = DateTime.now();
   bool _showTempoInMillisec = false;
+  bool _globalTempo = false;
 
   MidiDevice get midiDevice {
     return _midiDevice!;
@@ -54,8 +57,18 @@ class DeviceModel extends ChangeNotifier {
     return _tempo;
   }
 
+  String get tempoForDisplay {
+    return _showTempoInMillisec
+        ? Utils.bpmToMs(_tempo).toString()
+        : _tempo.toString();
+  }
+
   bool get showTempoInMillisec {
     return _showTempoInMillisec;
+  }
+
+  bool get globalTempo {
+    return _globalTempo;
   }
 
   List<EffectBlock> get effectChain {
@@ -199,7 +212,11 @@ class DeviceModel extends ChangeNotifier {
           // Incoming program change
           _programNo = data[1];
           _scene = 0;
-          _sendGetCurrentEffectStateCommand(midi);
+
+          if (_globalTempo) {
+            _sendSetTempoCommand(midi);
+          }
+          _sendLoadPresetCommand(midi, _programNo);
           notifyListeners();
         } else if (data[0] == 0xB0) {
           // Incoming CC
@@ -224,15 +241,15 @@ class DeviceModel extends ChangeNotifier {
             }
           }
         } else if ((data.length == 15) &&
-            (_toHex(data) == 'F0 43 58 70 7E 02 0D 00 00 00 00 00 00 00 F7')) {
+            (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 0D')) {
           // Effect order changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
-            (_toHex(data) == 'F0 43 58 70 7E 02 03 00 00 00 00 00 00 00 F7')) {
+            (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 03')) {
           // Tempo changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
-            (_toHex(data) == 'F0 43 58 70 7E 02 13 00 00 00 00 00 00 00 F7')) {
+            (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 13')) {
           // Control assignment changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
@@ -245,6 +262,11 @@ class DeviceModel extends ChangeNotifier {
             (_toHex(data.sublist(0, 6)) == 'F0 43 58 70 0C 02')) {
           // Response from get current effect state
           _populateEffectChain(data);
+          notifyListeners();
+        } else if ((data.length == 218) &&
+            (_toHex(data.sublist(0, 6)) == 'F0 43 58 70 0B 02')) {
+          // Response from get current effect state
+          _populateEffectChain(data, updateTempo: !_globalTempo);
           notifyListeners();
         }
       }
@@ -280,7 +302,7 @@ class DeviceModel extends ChangeNotifier {
     return result.join();
   }
 
-  void _populateEffectChain(Uint8List data) {
+  void _populateEffectChain(Uint8List data, {bool updateTempo = true}) {
     _effectChain.clear();
     _effectMap.clear();
 
@@ -288,7 +310,9 @@ class DeviceModel extends ChangeNotifier {
       _programNames[_programNo] = _convertProgramName(data.sublist(165, 189));
     }
 
-    _tempo = (data[143] * 64) + data[144];
+    if (updateTempo) {
+      _tempo = (data[143] * 64) + data[144];
+    }
 
     final effectTypeChain = _getEffectTypeChain(data);
 
@@ -500,7 +524,9 @@ class DeviceModel extends ChangeNotifier {
     midi.sendData(Uint8List.fromList([0xC0, programNo]),
         deviceId: _midiDevice?.id, timestamp: 0);
 
-    _sendGetCurrentEffectStateCommand(midi);
+    if (_globalTempo) {
+      _sendSetTempoCommand(midi);
+    }
   }
 
   void _sendCCCommand(MidiCommand midi, int cc, int value) {
@@ -553,8 +579,18 @@ class DeviceModel extends ChangeNotifier {
     _lastTapTempo = now;
   }
 
-  void toggleTempoDisplayMode() {
-    _showTempoInMillisec = !_showTempoInMillisec;
+  void updateAllTempoData(
+      int tempo, bool showTempoInMillisec, bool globalTempo) {
+    _tempo = tempo;
+    _showTempoInMillisec = showTempoInMillisec;
+    _globalTempo = globalTempo;
+    _sendSetTempoCommand(MidiCommand());
+    notifyListeners();
+  }
+
+  void updateTempoFlags(bool showTempoInMillisec, bool globalTempo) {
+    _showTempoInMillisec = showTempoInMillisec;
+    _globalTempo = globalTempo;
     notifyListeners();
   }
 
