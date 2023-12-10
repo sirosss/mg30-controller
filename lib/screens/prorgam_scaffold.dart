@@ -251,7 +251,10 @@ class ProgramSelectionButton extends StatelessWidget {
                       alignment: Alignment.center,
                       child: Text(
                         device.getProgramName(programNo),
-                        style: Theme.of(context).textTheme.headlineSmall,
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
+                            ?.copyWith(height: 0.9),
                         textAlign: TextAlign.center,
                       ))),
             ]),

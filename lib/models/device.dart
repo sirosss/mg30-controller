@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 
+import '/utils.dart';
+
 class DeviceModel extends ChangeNotifier {
   bool isInitialized = false;
 
@@ -29,6 +31,7 @@ class DeviceModel extends ChangeNotifier {
   int _tempo = 40;
   DateTime _lastTapTempo = DateTime.now();
   bool _showTempoInMillisec = false;
+  bool _globalTempo = false;
 
   MidiDevice get midiDevice {
     return _midiDevice!;
@@ -54,8 +57,18 @@ class DeviceModel extends ChangeNotifier {
     return _tempo;
   }
 
+  String get tempoForDisplay {
+    return _showTempoInMillisec
+        ? Utils.bpmToMs(_tempo).toString()
+        : _tempo.toString();
+  }
+
   bool get showTempoInMillisec {
     return _showTempoInMillisec;
+  }
+
+  bool get globalTempo {
+    return _globalTempo;
   }
 
   List<EffectBlock> get effectChain {
@@ -199,7 +212,11 @@ class DeviceModel extends ChangeNotifier {
           // Incoming program change
           _programNo = data[1];
           _scene = 0;
-          _sendGetCurrentEffectStateCommand(midi);
+
+          if (_globalTempo) {
+            _sendSetTempoCommand(midi);
+          }
+          _sendLoadPresetCommand(midi, _programNo);
           notifyListeners();
         } else if (data[0] == 0xB0) {
           // Incoming CC
@@ -224,12 +241,16 @@ class DeviceModel extends ChangeNotifier {
             }
           }
         } else if ((data.length == 15) &&
-            (_toHex(data) == 'F0 43 58 70 7E 02 0D 00 00 00 00 00 00 00 F7')) {
+            (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 0D')) {
           // Effect order changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
-            (_toHex(data) == 'F0 43 58 70 7E 02 03 00 01 00 00 00 00 00 F7')) {
+            (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 03')) {
           // Tempo changed
+          _sendGetCurrentEffectStateCommand(midi);
+        } else if ((data.length == 15) &&
+            (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 13')) {
+          // Control assignment changed
           _sendGetCurrentEffectStateCommand(midi);
         } else if ((data.length == 15) &&
             (_toHex(data.sublist(0, 7)) == 'F0 43 58 70 7E 02 0B')) {
@@ -241,6 +262,11 @@ class DeviceModel extends ChangeNotifier {
             (_toHex(data.sublist(0, 6)) == 'F0 43 58 70 0C 02')) {
           // Response from get current effect state
           _populateEffectChain(data);
+          notifyListeners();
+        } else if ((data.length == 218) &&
+            (_toHex(data.sublist(0, 6)) == 'F0 43 58 70 0B 02')) {
+          // Response from get current effect state
+          _populateEffectChain(data, updateTempo: !_globalTempo);
           notifyListeners();
         }
       }
@@ -276,7 +302,7 @@ class DeviceModel extends ChangeNotifier {
     return result.join();
   }
 
-  void _populateEffectChain(Uint8List data) {
+  void _populateEffectChain(Uint8List data, {bool updateTempo = true}) {
     _effectChain.clear();
     _effectMap.clear();
 
@@ -284,14 +310,21 @@ class DeviceModel extends ChangeNotifier {
       _programNames[_programNo] = _convertProgramName(data.sublist(165, 189));
     }
 
-    _tempo = (data[143] * 64) + data[144];
+    if (updateTempo) {
+      _tempo = (data[143] * 64) + data[144];
+    }
 
     final effectTypeChain = _getEffectTypeChain(data);
 
     for (int i = 0; i < effectTypeChain.length; i++) {
       switch (effectTypeChain[i]) {
         case 0:
-          _addEffectBlock(_getSingleCodeTypeBlock(data, 'WAH', 8, 2, 1));
+          EffectBlock effectBlock =
+              _getSingleCodeTypeBlock(data, 'WAH', 8, 2, 1);
+          if (data[194] != 2) {
+            effectBlock.isEnabled = false;
+          }
+          _addEffectBlock(effectBlock);
           break;
         case 1:
           _addEffectBlock(_getDualCodeTypeBlock(data, 'CMP', 9, 4, 1));
@@ -328,6 +361,22 @@ class DeviceModel extends ChangeNotifier {
           break;
         default:
           throw Exception('Unknown effect type code: $effectTypeChain[i]');
+      }
+    }
+
+    List<EffectBlock> modDlyRvb = _effectChain
+        .where((effectBlock) =>
+            ['MOD', 'DLY', 'RVB'].contains(effectBlock.definition.category.id))
+        .toList();
+
+    if (modDlyRvb.length == 3) {
+      if (data[146] & 2 == 2) {
+        modDlyRvb[0].isParallel = true;
+        modDlyRvb[1].isParallel = true;
+      }
+      if (data[146] & 4 == 4) {
+        modDlyRvb[1].isParallel = true;
+        modDlyRvb[2].isParallel = true;
       }
     }
   }
@@ -475,7 +524,9 @@ class DeviceModel extends ChangeNotifier {
     midi.sendData(Uint8List.fromList([0xC0, programNo]),
         deviceId: _midiDevice?.id, timestamp: 0);
 
-    _sendGetCurrentEffectStateCommand(midi);
+    if (_globalTempo) {
+      _sendSetTempoCommand(midi);
+    }
   }
 
   void _sendCCCommand(MidiCommand midi, int cc, int value) {
@@ -528,8 +579,18 @@ class DeviceModel extends ChangeNotifier {
     _lastTapTempo = now;
   }
 
-  void toggleTempoDisplayMode() {
-    _showTempoInMillisec = !_showTempoInMillisec;
+  void updateAllTempoData(
+      int tempo, bool showTempoInMillisec, bool globalTempo) {
+    _tempo = tempo;
+    _showTempoInMillisec = showTempoInMillisec;
+    _globalTempo = globalTempo;
+    _sendSetTempoCommand(MidiCommand());
+    notifyListeners();
+  }
+
+  void updateTempoFlags(bool showTempoInMillisec, bool globalTempo) {
+    _showTempoInMillisec = showTempoInMillisec;
+    _globalTempo = globalTempo;
     notifyListeners();
   }
 
@@ -611,29 +672,29 @@ class DeviceModel extends ChangeNotifier {
   void _loadDummyEffectChain() {
     _effectChain.clear();
     _effectChain.add(EffectBlock(_effectCategories['WAH']!.saveOnEffects[8]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['CMP']!.saveOnEffects[6]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['EFX']!.saveOnEffects[16]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['AMP']!.saveOnEffects[13]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['EQ']!.saveOnEffects[6]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['GATE']!.saveOnEffects[1]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
     _effectChain.add(EffectBlock(_effectCategories['MOD']!.saveOnEffects[26]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['DLY']!.saveOnEffects[4]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['RVB']!.saveOnEffects[8]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(
         _effectCategories['IR']!.saveOnEffects[7]!, [true, true, true], false));
     _effectChain.add(EffectBlock(_effectCategories['S/R']!.saveOffEffects[1]!,
-        [false, false, false], false));
+        [false, false, false], true, false));
     _effectChain.add(EffectBlock(_effectCategories['VOL']!.saveOnEffects[1]!,
-        [true, true, true], false));
+        [true, true, true], true, false));
   }
 
   String _toHex(Uint8List data, {String separator = ' '}) {
@@ -667,9 +728,11 @@ class EffectDefinition {
 class EffectBlock {
   final EffectDefinition definition;
   List<bool> isOn;
-  final bool isParallel;
+  bool isEnabled;
+  bool isParallel;
 
-  EffectBlock(this.definition, this.isOn, [this.isParallel = false]);
+  EffectBlock(this.definition, this.isOn,
+      [this.isEnabled = true, this.isParallel = false]);
 }
 
 enum MG30VerificationState { init, verified, unknown }
